@@ -69,6 +69,13 @@ struct {
   __type(value, __u8[256]);
 } scratch_path SEC(".maps");
 
+struct {
+  __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+  __uint(max_entries, 1);
+  __type(key, __u32);
+  __type(value, __u8[512]);
+} scratch_argv SEC(".maps");
+
 static __always_inline void emit_event(void *ctx, const char *op, __s32 fd, __s64 retval, const __u8 *path) {
   struct event *event = gadget_reserve_buf(&events, sizeof(*event));
   if (!event)
@@ -201,6 +208,11 @@ int tp_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
   const char *filename = (const char *)ctx->args[0];
   const char *const *argv = (const char *const *)ctx->args[1];
   int off = 0;
+  __u32 zero = 0;
+  __u8 *argv_buf = bpf_map_lookup_elem(&scratch_argv, &zero);
+  if (!argv_buf)
+    return 0;
+  argv_buf[0] = '\0';
   struct event *event = gadget_reserve_buf(&events, sizeof(struct event));
   if (!event)
     return 0;
@@ -220,7 +232,7 @@ int tp_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
   event->retval = 0;
   if (bpf_probe_read_user_str(event->path, sizeof(event->path), filename) <= 0)
     event->path[0] = '\0';
-  /* Best-effort argv copy: read up to 6 args directly into event->argv */
+  /* Best-effort argv copy: read up to 6 args into per-cpu scratch, then memcpy */
   #pragma unroll
   for (int i = 0; i < 6; i++) {
     const char *argp = 0;
@@ -228,18 +240,18 @@ int tp_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
       break;
     if (!argp)
       break;
-    int rem = (int)sizeof(event->argv) - off - 1;
+    int rem = (int)512 - off - 1;
     if (rem <= 0)
       break;
-    int w = bpf_probe_read_user_str(&event->argv[off], rem, argp);
+    int w = bpf_probe_read_user_str(&argv_buf[off], rem, argp);
     if (w <= 0)
       break;
     off += w - 1;
-    if (off < (int)sizeof(event->argv) - 1) {
-      event->argv[off++] = ' ';
+    if (off < 511) {
+      argv_buf[off++] = ' ';
     }
   }
-  if (off <= 0) event->argv[0] = '\0';
+  if (off > 0) __builtin_memcpy(event->argv, argv_buf, sizeof(event->argv)); else event->argv[0] = '\0';
   gadget_submit_buf((void *)ctx, &events, event, sizeof(*event));
   return 0;
 }
@@ -249,6 +261,11 @@ int tp_sys_enter_execveat(struct trace_event_raw_sys_enter *ctx) {
   const char *filename = (const char *)ctx->args[1];
   const char *const *argv = (const char *const *)ctx->args[2];
   int off = 0;
+  __u32 zero = 0;
+  __u8 *argv_buf = bpf_map_lookup_elem(&scratch_argv, &zero);
+  if (!argv_buf)
+    return 0;
+  argv_buf[0] = '\0';
   struct event *event = gadget_reserve_buf(&events, sizeof(struct event));
   if (!event)
     return 0;
@@ -275,18 +292,18 @@ int tp_sys_enter_execveat(struct trace_event_raw_sys_enter *ctx) {
       break;
     if (!argp)
       break;
-    int rem = (int)sizeof(event->argv) - off - 1;
+    int rem = (int)512 - off - 1;
     if (rem <= 0)
       break;
-    int w = bpf_probe_read_user_str(&event->argv[off], rem, argp);
+    int w = bpf_probe_read_user_str(&argv_buf[off], rem, argp);
     if (w <= 0)
       break;
     off += w - 1;
-    if (off < (int)sizeof(event->argv) - 1) {
-      event->argv[off++] = ' ';
+    if (off < 511) {
+      argv_buf[off++] = ' ';
     }
   }
-  if (off <= 0) event->argv[0] = '\0';
+  if (off > 0) __builtin_memcpy(event->argv, argv_buf, sizeof(event->argv)); else event->argv[0] = '\0';
   gadget_submit_buf((void *)ctx, &events, event, sizeof(*event));
   return 0;
 }
