@@ -26,6 +26,7 @@ struct event {
   __s32 fd;
   __s64 retval;
   __u8 path[256];
+  __u8 argv[512];
 };
 
 GADGET_TRACER_MAP(events, 1024 * 256);
@@ -85,6 +86,7 @@ static __always_inline void emit_event(void *ctx, const char *op, __s32 fd, __s6
     __builtin_memcpy(event->path, path, sizeof(event->path));
   else
     event->path[0] = '\0';
+  event->argv[0] = '\0';
   gadget_submit_buf(ctx, &events, event, sizeof(*event));
 }
 
@@ -184,11 +186,49 @@ SEC("tracepoint/syscalls/sys_enter_execve")
 int tp_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
   const char *filename = (const char *)ctx->args[0];
   __u8 path[256] = {};
+  const char *const *argv = (const char *const *)ctx->args[1];
+  __u8 argbuf[512] = {};
+  int off = 0;
   long n = bpf_probe_read_user_str(path, sizeof(path), filename);
-  if (n > 0)
-    emit_event((void *)ctx, "exec", -1, 0, path);
-  else
-    emit_event((void *)ctx, "exec", -1, 0, 0);
+  /* Best-effort argv copy: read up to 6 args */
+  #pragma unroll
+  for (int i = 0; i < 6; i++) {
+    const char *argp = 0;
+    if (bpf_core_read(&argp, sizeof(argp), &argv[i]) < 0)
+      break;
+    if (!argp)
+      break;
+    int rem = (int)sizeof(argbuf) - off - 1;
+    if (rem <= 0)
+      break;
+    int w = bpf_probe_read_user_str(&argbuf[off], rem, argp);
+    if (w <= 0)
+      break;
+    off += w - 1;
+    if (off < (int)sizeof(argbuf) - 1) {
+      argbuf[off++] = ' ';
+    }
+  }
+  struct event *event = gadget_reserve_buf(&events, sizeof(struct event));
+  if (event) {
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+    event->timestamp = bpf_ktime_get_boot_ns();
+    event->mntns_id = gadget_get_current_mntns_id();
+    event->pid = pid_tgid >> 32;
+    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+    struct task_struct *parent = 0; __u32 ppid = 0;
+    bpf_core_read(&parent, sizeof(parent), &task->real_parent);
+    if (parent) bpf_core_read(&ppid, sizeof(ppid), &parent->tgid);
+    event->ppid = ppid;
+    bpf_get_current_comm(&event->comm, sizeof(event->comm));
+    __builtin_memset(event->op, 0, sizeof(event->op));
+    __builtin_memcpy(event->op, "exec", 5);
+    event->fd = -1;
+    event->retval = 0;
+    if (n > 0) __builtin_memcpy(event->path, path, sizeof(event->path)); else event->path[0] = '\0';
+    if (off > 0) __builtin_memcpy(event->argv, argbuf, sizeof(event->argv)); else event->argv[0] = '\0';
+    gadget_submit_buf((void *)ctx, &events, event, sizeof(*event));
+  }
   return 0;
 }
 
@@ -196,11 +236,48 @@ SEC("tracepoint/syscalls/sys_enter_execveat")
 int tp_sys_enter_execveat(struct trace_event_raw_sys_enter *ctx) {
   const char *filename = (const char *)ctx->args[1];
   __u8 path[256] = {};
+  const char *const *argv = (const char *const *)ctx->args[2];
+  __u8 argbuf[512] = {};
+  int off = 0;
   long n = bpf_probe_read_user_str(path, sizeof(path), filename);
-  if (n > 0)
-    emit_event((void *)ctx, "exec", -1, 0, path);
-  else
-    emit_event((void *)ctx, "exec", -1, 0, 0);
+  #pragma unroll
+  for (int i = 0; i < 6; i++) {
+    const char *argp = 0;
+    if (bpf_core_read(&argp, sizeof(argp), &argv[i]) < 0)
+      break;
+    if (!argp)
+      break;
+    int rem = (int)sizeof(argbuf) - off - 1;
+    if (rem <= 0)
+      break;
+    int w = bpf_probe_read_user_str(&argbuf[off], rem, argp);
+    if (w <= 0)
+      break;
+    off += w - 1;
+    if (off < (int)sizeof(argbuf) - 1) {
+      argbuf[off++] = ' ';
+    }
+  }
+  struct event *event = gadget_reserve_buf(&events, sizeof(struct event));
+  if (event) {
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+    event->timestamp = bpf_ktime_get_boot_ns();
+    event->mntns_id = gadget_get_current_mntns_id();
+    event->pid = pid_tgid >> 32;
+    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+    struct task_struct *parent = 0; __u32 ppid = 0;
+    bpf_core_read(&parent, sizeof(parent), &task->real_parent);
+    if (parent) bpf_core_read(&ppid, sizeof(ppid), &parent->tgid);
+    event->ppid = ppid;
+    bpf_get_current_comm(&event->comm, sizeof(event->comm));
+    __builtin_memset(event->op, 0, sizeof(event->op));
+    __builtin_memcpy(event->op, "exec", 5);
+    event->fd = -1;
+    event->retval = 0;
+    if (n > 0) __builtin_memcpy(event->path, path, sizeof(event->path)); else event->path[0] = '\0';
+    if (off > 0) __builtin_memcpy(event->argv, argbuf, sizeof(event->argv)); else event->argv[0] = '\0';
+    gadget_submit_buf((void *)ctx, &events, event, sizeof(*event));
+  }
   return 0;
 }
 
