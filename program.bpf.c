@@ -92,7 +92,7 @@ static __always_inline void emit_event(void *ctx, const char *op, __s32 fd, __s6
 SEC("tracepoint/syscalls/sys_enter_openat")
 int tp_sys_enter_openat(struct trace_event_raw_sys_enter *ctx) {
   __u64 id = bpf_get_current_pid_tgid();
-  const char __user *filename = (const char __user *)ctx->args[1];
+  const char *filename = (const char *)ctx->args[1];
   __u8 path[256] = {};
   long n = bpf_probe_read_user_str(path, sizeof(path), filename);
   if (n > 0)
@@ -103,7 +103,7 @@ int tp_sys_enter_openat(struct trace_event_raw_sys_enter *ctx) {
 SEC("tracepoint/syscalls/sys_enter_openat2")
 int tp_sys_enter_openat2(struct trace_event_raw_sys_enter *ctx) {
   __u64 id = bpf_get_current_pid_tgid();
-  const char __user *filename = (const char __user *)ctx->args[1];
+  const char *filename = (const char *)ctx->args[1];
   __u8 path[256] = {};
   long n = bpf_probe_read_user_str(path, sizeof(path), filename);
   if (n > 0)
@@ -182,7 +182,7 @@ int tp_sched_process_exit(struct trace_event_raw_sched_process_template *ctx) {
 /* process start via execve/execveat (emit filename) */
 SEC("tracepoint/syscalls/sys_enter_execve")
 int tp_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
-  const char __user *filename = (const char __user *)ctx->args[0];
+  const char *filename = (const char *)ctx->args[0];
   __u8 path[256] = {};
   long n = bpf_probe_read_user_str(path, sizeof(path), filename);
   if (n > 0)
@@ -194,7 +194,7 @@ int tp_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
 
 SEC("tracepoint/syscalls/sys_enter_execveat")
 int tp_sys_enter_execveat(struct trace_event_raw_sys_enter *ctx) {
-  const char __user *filename = (const char __user *)ctx->args[1];
+  const char *filename = (const char *)ctx->args[1];
   __u8 path[256] = {};
   long n = bpf_probe_read_user_str(path, sizeof(path), filename);
   if (n > 0)
