@@ -133,7 +133,7 @@ int tp_sys_exit_openat(struct trace_event_raw_sys_exit *ctx) {
   __s64 ret = ctx->ret;
   __u8 *pathp = bpf_map_lookup_elem(&inprog_open, &id);
   if (pathp) {
-    emit_event((void *)ctx, "open", (__s32)ret, ret, pathp);
+    emit_event((void *)ctx, "open", (__s32)ret, ret, (const char *)pathp);
     if (ret >= 0) {
       struct fd_key key = { .tgid = id >> 32, .fd = (__s32)ret };
       bpf_map_update_elem(&fd_path, &key, pathp, BPF_ANY);
@@ -151,7 +151,7 @@ int tp_sys_exit_openat2(struct trace_event_raw_sys_exit *ctx) {
   __s64 ret = ctx->ret;
   __u8 *pathp = bpf_map_lookup_elem(&inprog_open, &id);
   if (pathp) {
-    emit_event((void *)ctx, "open", (__s32)ret, ret, pathp);
+    emit_event((void *)ctx, "open", (__s32)ret, ret, (const char *)pathp);
     if (ret >= 0) {
       struct fd_key key = { .tgid = id >> 32, .fd = (__s32)ret };
       bpf_map_update_elem(&fd_path, &key, pathp, BPF_ANY);
@@ -182,7 +182,7 @@ int tp_sys_exit_close(struct trace_event_raw_sys_exit *ctx) {
     return 0;
   struct fd_key key = { .tgid = id >> 32, .fd = *fdp };
   __u8 *pathp = bpf_map_lookup_elem(&fd_path, &key);
-  emit_event((void *)ctx, "close", *fdp, ctx->ret, pathp);
+  emit_event((void *)ctx, "close", *fdp, ctx->ret, (const char *)pathp);
   if (pathp)
     bpf_map_delete_elem(&fd_path, &key);
   bpf_map_delete_elem(&inprog_close, &id);
@@ -216,14 +216,7 @@ int tp_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
   __u8 *path_buf = bpf_map_lookup_elem(&scratch_path, &zero);
   if (!path_buf)
     return 0;
-  __u64 pid_tgid = bpf_get_current_pid_tgid();
-  gadget_timestamp ts = bpf_ktime_get_boot_ns();
-  gadget_mntns_id mntns = gadget_get_current_mntns_id();
-  __u32 pid = pid_tgid >> 32;
-  struct task_struct *task = (struct task_struct *)bpf_get_current_task();
-  struct task_struct *parent = 0; __u32 ppid = 0;
-  bpf_core_read(&parent, sizeof(parent), &task->real_parent);
-  if (parent) bpf_core_read(&ppid, sizeof(ppid), &parent->tgid);
+  /* stage strings in per-cpu buffers first */
   if (bpf_probe_read_user_str(path_buf, 256, filename) > 0)
     ;
   /* Best-effort argv capture: only argv[0] to satisfy verifier */
@@ -233,11 +226,7 @@ int tp_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
   struct event *event = gadget_reserve_buf(&events, sizeof(struct event));
   if (!event)
     return 0;
-  event->timestamp = ts;
-  event->mntns_id = mntns;
-  event->pid = pid;
-  event->ppid = ppid;
-  bpf_get_current_comm(&event->comm, sizeof(event->comm));
+  gadget_process_populate(&event->proc);
   __builtin_memset(event->op, 0, sizeof(event->op));
   __builtin_memcpy(event->op, "exec", 5);
   event->fd = -1;
@@ -261,14 +250,7 @@ int tp_sys_enter_execveat(struct trace_event_raw_sys_enter *ctx) {
   __u8 *path_buf = bpf_map_lookup_elem(&scratch_path, &zero);
   if (!path_buf)
     return 0;
-  __u64 pid_tgid = bpf_get_current_pid_tgid();
-  gadget_timestamp ts = bpf_ktime_get_boot_ns();
-  gadget_mntns_id mntns = gadget_get_current_mntns_id();
-  __u32 pid = pid_tgid >> 32;
-  struct task_struct *task = (struct task_struct *)bpf_get_current_task();
-  struct task_struct *parent = 0; __u32 ppid = 0;
-  bpf_core_read(&parent, sizeof(parent), &task->real_parent);
-  if (parent) bpf_core_read(&ppid, sizeof(ppid), &parent->tgid);
+  /* stage strings in per-cpu buffers first */
   if (bpf_probe_read_user_str(path_buf, 256, filename) > 0)
     ;
   const char *arg0p = 0;
@@ -277,11 +259,7 @@ int tp_sys_enter_execveat(struct trace_event_raw_sys_enter *ctx) {
   struct event *event = gadget_reserve_buf(&events, sizeof(struct event));
   if (!event)
     return 0;
-  event->timestamp = ts;
-  event->mntns_id = mntns;
-  event->pid = pid;
-  event->ppid = ppid;
-  bpf_get_current_comm(&event->comm, sizeof(event->comm));
+  gadget_process_populate(&event->proc);
   __builtin_memset(event->op, 0, sizeof(event->op));
   __builtin_memcpy(event->op, "exec", 5);
   event->fd = -1;
