@@ -1,18 +1,21 @@
-# PROCESS-AND-FILE-ACTIVITY-TRACER
+# file-io-tracer
 
-FILE-ACTIVITY-TRACER is a [gadget from Inspektor
-Gadget](https://inspektor-gadget.io/). It detects open and close activity on files and start and end activity of processes.
+file-io-tracer is an Inspektor Gadget that traces open/close/exit syscalls and correlates file descriptors to file paths. It helps debug leftover git lock files in Argo CD repo-server.
 
 ## How to use
 
-```bash
-$ sudo ig run ghcr.io/CHANGEME-ORG/CHANGEME-GADGET-NAME:latest
+```
+sudo ig run ghcr.io/CHANGEME-ORG/CHANGEME-GADGET-NAME:latest
 ```
 
 ## Requirements
 
-- ig v0.26.0 (CHANGEME)
-- Linux v5.15 (CHANGEME)
+- ig v0.26.0+
+- Linux v5.8+ (ringbuf). For older kernels, add a perf buffer fallback.
+
+Notes for k3d and vcluster:
+- Deploy on the host cluster nodes (where containers run). Ensure IG has required privileges and mounts.
+- Works across architectures via tracepoints; BTF with CO-RE recommended. Consider btfgen for portability.
 
 ## License (CHANGEME)
 
