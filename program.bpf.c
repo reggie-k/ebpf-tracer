@@ -213,6 +213,9 @@ int tp_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
   if (!argv_buf)
     return 0;
   argv_buf[0] = '\0';
+  __u8 *path_buf = bpf_map_lookup_elem(&scratch_path, &zero);
+  if (!path_buf)
+    return 0;
   struct event *event = gadget_reserve_buf(&events, sizeof(struct event));
   if (!event)
     return 0;
@@ -230,7 +233,9 @@ int tp_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
   __builtin_memcpy(event->op, "exec", 5);
   event->fd = -1;
   event->retval = 0;
-  if (bpf_probe_read_user_str(event->path, sizeof(event->path), filename) <= 0)
+  if (bpf_probe_read_user_str(path_buf, 256, filename) > 0)
+    __builtin_memcpy(event->path, path_buf, sizeof(event->path));
+  else
     event->path[0] = '\0';
   /* Best-effort argv copy: read up to 6 args into per-cpu scratch, then memcpy */
   #pragma unroll
@@ -266,6 +271,9 @@ int tp_sys_enter_execveat(struct trace_event_raw_sys_enter *ctx) {
   if (!argv_buf)
     return 0;
   argv_buf[0] = '\0';
+  __u8 *path_buf = bpf_map_lookup_elem(&scratch_path, &zero);
+  if (!path_buf)
+    return 0;
   struct event *event = gadget_reserve_buf(&events, sizeof(struct event));
   if (!event)
     return 0;
@@ -283,7 +291,9 @@ int tp_sys_enter_execveat(struct trace_event_raw_sys_enter *ctx) {
   __builtin_memcpy(event->op, "exec", 5);
   event->fd = -1;
   event->retval = 0;
-  if (bpf_probe_read_user_str(event->path, sizeof(event->path), filename) <= 0)
+  if (bpf_probe_read_user_str(path_buf, 256, filename) > 0)
+    __builtin_memcpy(event->path, path_buf, sizeof(event->path));
+  else
     event->path[0] = '\0';
   #pragma unroll
   for (int i = 0; i < 6; i++) {
