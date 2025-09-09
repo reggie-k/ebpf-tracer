@@ -207,36 +207,24 @@ SEC("tracepoint/syscalls/sys_enter_execve")
 int tp_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
   const char *filename = (const char *)ctx->args[0];
   const char *const *argv = (const char *const *)ctx->args[1];
-  int off = 0;
   __u32 zero = 0;
   __u8 *argv_buf = bpf_map_lookup_elem(&scratch_argv, &zero);
   if (!argv_buf)
     return 0;
-  argv_buf[0] = '\0';
   __u8 *path_buf = bpf_map_lookup_elem(&scratch_path, &zero);
   if (!path_buf)
     return 0;
-  struct event *event = gadget_reserve_buf(&events, sizeof(struct event));
-  if (!event)
-    return 0;
+  int off = 0;
   __u64 pid_tgid = bpf_get_current_pid_tgid();
-  event->timestamp = bpf_ktime_get_boot_ns();
-  event->mntns_id = gadget_get_current_mntns_id();
-  event->pid = pid_tgid >> 32;
+  gadget_timestamp ts = bpf_ktime_get_boot_ns();
+  gadget_mntns_id mntns = gadget_get_current_mntns_id();
+  __u32 pid = pid_tgid >> 32;
   struct task_struct *task = (struct task_struct *)bpf_get_current_task();
   struct task_struct *parent = 0; __u32 ppid = 0;
   bpf_core_read(&parent, sizeof(parent), &task->real_parent);
   if (parent) bpf_core_read(&ppid, sizeof(ppid), &parent->tgid);
-  event->ppid = ppid;
-  bpf_get_current_comm(&event->comm, sizeof(event->comm));
-  __builtin_memset(event->op, 0, sizeof(event->op));
-  __builtin_memcpy(event->op, "exec", 5);
-  event->fd = -1;
-  event->retval = 0;
   if (bpf_probe_read_user_str(path_buf, 256, filename) > 0)
-    __builtin_memcpy(event->path, path_buf, sizeof(event->path));
-  else
-    event->path[0] = '\0';
+    ;
   /* Best-effort argv copy: read up to 6 args into per-cpu scratch, then memcpy */
   #pragma unroll
   for (int i = 0; i < 6; i++) {
@@ -256,7 +244,21 @@ int tp_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
       argv_buf[off++] = ' ';
     }
   }
-  if (off > 0) __builtin_memcpy(event->argv, argv_buf, sizeof(event->argv)); else event->argv[0] = '\0';
+  struct event *event = gadget_reserve_buf(&events, sizeof(struct event));
+  if (!event)
+    return 0;
+  event->timestamp = ts;
+  event->mntns_id = mntns;
+  event->pid = pid;
+  event->ppid = ppid;
+  bpf_get_current_comm(&event->comm, sizeof(event->comm));
+  __builtin_memset(event->op, 0, sizeof(event->op));
+  __builtin_memcpy(event->op, "exec", 5);
+  event->fd = -1;
+  event->retval = 0;
+  __builtin_memcpy(event->path, path_buf, sizeof(event->path));
+  if (off > 0)
+    __builtin_memcpy(event->argv, argv_buf, sizeof(event->argv));
   gadget_submit_buf((void *)ctx, &events, event, sizeof(*event));
   return 0;
 }
@@ -265,36 +267,24 @@ SEC("tracepoint/syscalls/sys_enter_execveat")
 int tp_sys_enter_execveat(struct trace_event_raw_sys_enter *ctx) {
   const char *filename = (const char *)ctx->args[1];
   const char *const *argv = (const char *const *)ctx->args[2];
-  int off = 0;
   __u32 zero = 0;
   __u8 *argv_buf = bpf_map_lookup_elem(&scratch_argv, &zero);
   if (!argv_buf)
     return 0;
-  argv_buf[0] = '\0';
   __u8 *path_buf = bpf_map_lookup_elem(&scratch_path, &zero);
   if (!path_buf)
     return 0;
-  struct event *event = gadget_reserve_buf(&events, sizeof(struct event));
-  if (!event)
-    return 0;
+  int off = 0;
   __u64 pid_tgid = bpf_get_current_pid_tgid();
-  event->timestamp = bpf_ktime_get_boot_ns();
-  event->mntns_id = gadget_get_current_mntns_id();
-  event->pid = pid_tgid >> 32;
+  gadget_timestamp ts = bpf_ktime_get_boot_ns();
+  gadget_mntns_id mntns = gadget_get_current_mntns_id();
+  __u32 pid = pid_tgid >> 32;
   struct task_struct *task = (struct task_struct *)bpf_get_current_task();
   struct task_struct *parent = 0; __u32 ppid = 0;
   bpf_core_read(&parent, sizeof(parent), &task->real_parent);
   if (parent) bpf_core_read(&ppid, sizeof(ppid), &parent->tgid);
-  event->ppid = ppid;
-  bpf_get_current_comm(&event->comm, sizeof(event->comm));
-  __builtin_memset(event->op, 0, sizeof(event->op));
-  __builtin_memcpy(event->op, "exec", 5);
-  event->fd = -1;
-  event->retval = 0;
   if (bpf_probe_read_user_str(path_buf, 256, filename) > 0)
-    __builtin_memcpy(event->path, path_buf, sizeof(event->path));
-  else
-    event->path[0] = '\0';
+    ;
   #pragma unroll
   for (int i = 0; i < 6; i++) {
     const char *argp = 0;
@@ -313,7 +303,21 @@ int tp_sys_enter_execveat(struct trace_event_raw_sys_enter *ctx) {
       argv_buf[off++] = ' ';
     }
   }
-  if (off > 0) __builtin_memcpy(event->argv, argv_buf, sizeof(event->argv)); else event->argv[0] = '\0';
+  struct event *event = gadget_reserve_buf(&events, sizeof(struct event));
+  if (!event)
+    return 0;
+  event->timestamp = ts;
+  event->mntns_id = mntns;
+  event->pid = pid;
+  event->ppid = ppid;
+  bpf_get_current_comm(&event->comm, sizeof(event->comm));
+  __builtin_memset(event->op, 0, sizeof(event->op));
+  __builtin_memcpy(event->op, "exec", 5);
+  event->fd = -1;
+  event->retval = 0;
+  __builtin_memcpy(event->path, path_buf, sizeof(event->path));
+  if (off > 0)
+    __builtin_memcpy(event->argv, argv_buf, sizeof(event->argv));
   gadget_submit_buf((void *)ctx, &events, event, sizeof(*event));
   return 0;
 }
