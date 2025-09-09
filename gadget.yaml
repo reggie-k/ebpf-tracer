@@ -7,29 +7,9 @@ tracers:
 structs:
   event:
     fields:
-    - name: timestamp
-      description: Timestamp
-      attributes:
-        template: timestamp
-    - name: pid
-      description: Process ID
-      attributes:
-        template: pid
-    - name: ppid
-      description: Parent process ID
-      attributes:
-        template: pid
-    - name: comm
-      description: Process name
-      attributes:
-        template: comm
-        length: 16
-    - name: mntns_id
-      description: Mount namespace ID
-      attributes:
-        template: ns
+    # 'proc' fields (pid/comm/parent/mntns/creds) are auto-detected via struct gadget_process
     - name: op
-      description: Operation (open|close|exit)
+      description: Operation (open|close|exit|exec)
       attributes:
         template: string
         length: 8
