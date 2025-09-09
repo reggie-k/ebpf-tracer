@@ -292,5 +292,3 @@ int tp_sys_enter_execveat(struct trace_event_raw_sys_enter *ctx) {
 }
 
 char LICENSE[] SEC("license") = "GPL";
-
-char LICENSE[] SEC("license") = "GPL";
