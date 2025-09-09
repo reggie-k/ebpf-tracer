@@ -94,8 +94,6 @@ static __always_inline void emit_event(void *ctx, const char *op, int fd, long r
 /* openat(openat2) enter: capture filename */
 SEC("tracepoint/syscalls/sys_enter_openat")
 int tp_sys_enter_openat(struct trace_event_raw_sys_enter *ctx) {
-  if (gadget_should_discard_data_current())
-    return 0;
   __u64 id = bpf_get_current_pid_tgid();
   const char *filename = (const char *)ctx->args[1];
   __u32 zero = 0;
@@ -110,8 +108,6 @@ int tp_sys_enter_openat(struct trace_event_raw_sys_enter *ctx) {
 
 SEC("tracepoint/syscalls/sys_enter_openat2")
 int tp_sys_enter_openat2(struct trace_event_raw_sys_enter *ctx) {
-  if (gadget_should_discard_data_current())
-    return 0;
   __u64 id = bpf_get_current_pid_tgid();
   const char *filename = (const char *)ctx->args[1];
   __u32 zero = 0;
@@ -127,8 +123,6 @@ int tp_sys_enter_openat2(struct trace_event_raw_sys_enter *ctx) {
 /* openat(openat2) exit: emit event and remember fd->path */
 SEC("tracepoint/syscalls/sys_exit_openat")
 int tp_sys_exit_openat(struct trace_event_raw_sys_exit *ctx) {
-  if (gadget_should_discard_data_current())
-    return 0;
   __u64 id = bpf_get_current_pid_tgid();
   __s64 ret = ctx->ret;
   __u8 *pathp = bpf_map_lookup_elem(&inprog_open, &id);
@@ -145,8 +139,6 @@ int tp_sys_exit_openat(struct trace_event_raw_sys_exit *ctx) {
 
 SEC("tracepoint/syscalls/sys_exit_openat2")
 int tp_sys_exit_openat2(struct trace_event_raw_sys_exit *ctx) {
-  if (gadget_should_discard_data_current())
-    return 0;
   __u64 id = bpf_get_current_pid_tgid();
   __s64 ret = ctx->ret;
   __u8 *pathp = bpf_map_lookup_elem(&inprog_open, &id);
@@ -164,8 +156,6 @@ int tp_sys_exit_openat2(struct trace_event_raw_sys_exit *ctx) {
 /* close enter/exit: correlate fd with path and emit */
 SEC("tracepoint/syscalls/sys_enter_close")
 int tp_sys_enter_close(struct trace_event_raw_sys_enter *ctx) {
-  if (gadget_should_discard_data_current())
-    return 0;
   __u64 id = bpf_get_current_pid_tgid();
   __s32 fd = (__s32)ctx->args[0];
   bpf_map_update_elem(&inprog_close, &id, &fd, BPF_ANY);
@@ -174,8 +164,6 @@ int tp_sys_enter_close(struct trace_event_raw_sys_enter *ctx) {
 
 SEC("tracepoint/syscalls/sys_exit_close")
 int tp_sys_exit_close(struct trace_event_raw_sys_exit *ctx) {
-  if (gadget_should_discard_data_current())
-    return 0;
   __u64 id = bpf_get_current_pid_tgid();
   __s32 *fdp = bpf_map_lookup_elem(&inprog_close, &id);
   if (!fdp)
@@ -192,8 +180,6 @@ int tp_sys_exit_close(struct trace_event_raw_sys_exit *ctx) {
 /* process exit */
 SEC("tracepoint/sched/sched_process_exit")
 int tp_sched_process_exit(struct trace_event_raw_sched_process_template *ctx) {
-  if (gadget_should_discard_data_current())
-    return 0;
   /* capture real exit_code from current task */
   struct task_struct *task = (struct task_struct *)bpf_get_current_task();
   int code = 0;
@@ -205,8 +191,6 @@ int tp_sched_process_exit(struct trace_event_raw_sched_process_template *ctx) {
 /* process start via execve/execveat (emit filename) */
 SEC("tracepoint/syscalls/sys_enter_execve")
 int tp_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
-  if (gadget_should_discard_data_current())
-    return 0;
   const char *filename = (const char *)ctx->args[0];
   const char *const *argv = (const char *const *)ctx->args[1];
   __u32 zero = 0;
@@ -239,8 +223,6 @@ int tp_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
 
 SEC("tracepoint/syscalls/sys_enter_execveat")
 int tp_sys_enter_execveat(struct trace_event_raw_sys_enter *ctx) {
-  if (gadget_should_discard_data_current())
-    return 0;
   const char *filename = (const char *)ctx->args[1];
   const char *const *argv = (const char *const *)ctx->args[2];
   __u32 zero = 0;
