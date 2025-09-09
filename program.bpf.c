@@ -77,6 +77,8 @@ struct {
 } scratch_argv SEC(".maps");
 
 static __always_inline void emit_event(void *ctx, const char *op, __s32 fd, __s64 retval, const __u8 *path) {
+  __u8 comm_buf[TASK_COMM_LEN] = {};
+  bpf_get_current_comm(&comm_buf, sizeof(comm_buf));
   struct event *event = gadget_reserve_buf(&events, sizeof(*event));
   if (!event)
     return;
@@ -92,7 +94,7 @@ static __always_inline void emit_event(void *ctx, const char *op, __s32 fd, __s6
   if (parent)
     bpf_core_read(&ppid, sizeof(ppid), &parent->tgid);
   event->ppid = ppid;
-  bpf_get_current_comm(&event->comm, sizeof(event->comm));
+  __builtin_memcpy(event->comm, comm_buf, sizeof(event->comm));
   __builtin_memset(event->op, 0, sizeof(event->op));
   __builtin_memcpy(event->op, op, 7);
   event->fd = fd;
@@ -214,7 +216,6 @@ int tp_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
   __u8 *path_buf = bpf_map_lookup_elem(&scratch_path, &zero);
   if (!path_buf)
     return 0;
-  int off = 0;
   __u64 pid_tgid = bpf_get_current_pid_tgid();
   gadget_timestamp ts = bpf_ktime_get_boot_ns();
   gadget_mntns_id mntns = gadget_get_current_mntns_id();
@@ -225,25 +226,10 @@ int tp_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
   if (parent) bpf_core_read(&ppid, sizeof(ppid), &parent->tgid);
   if (bpf_probe_read_user_str(path_buf, 256, filename) > 0)
     ;
-  /* Best-effort argv copy: read up to 6 args into per-cpu scratch, then memcpy */
-  #pragma unroll
-  for (int i = 0; i < 6; i++) {
-    const char *argp = 0;
-    if (bpf_core_read(&argp, sizeof(argp), &argv[i]) < 0)
-      break;
-    if (!argp)
-      break;
-    int rem = (int)512 - off - 1;
-    if (rem <= 0)
-      break;
-    int w = bpf_probe_read_user_str(&argv_buf[off], rem, argp);
-    if (w <= 0)
-      break;
-    off += w - 1;
-    if (off < 511) {
-      argv_buf[off++] = ' ';
-    }
-  }
+  /* Best-effort argv capture: only argv[0] to satisfy verifier */
+  const char *arg0p = 0;
+  if (bpf_core_read(&arg0p, sizeof(arg0p), &argv[0]) == 0 && arg0p)
+    bpf_probe_read_user_str(argv_buf, 512, arg0p);
   struct event *event = gadget_reserve_buf(&events, sizeof(struct event));
   if (!event)
     return 0;
@@ -257,8 +243,7 @@ int tp_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
   event->fd = -1;
   event->retval = 0;
   __builtin_memcpy(event->path, path_buf, sizeof(event->path));
-  if (off > 0)
-    __builtin_memcpy(event->argv, argv_buf, sizeof(event->argv));
+  __builtin_memcpy(event->argv, argv_buf, sizeof(event->argv));
   gadget_submit_buf((void *)ctx, &events, event, sizeof(*event));
   return 0;
 }
@@ -274,7 +259,6 @@ int tp_sys_enter_execveat(struct trace_event_raw_sys_enter *ctx) {
   __u8 *path_buf = bpf_map_lookup_elem(&scratch_path, &zero);
   if (!path_buf)
     return 0;
-  int off = 0;
   __u64 pid_tgid = bpf_get_current_pid_tgid();
   gadget_timestamp ts = bpf_ktime_get_boot_ns();
   gadget_mntns_id mntns = gadget_get_current_mntns_id();
@@ -285,24 +269,9 @@ int tp_sys_enter_execveat(struct trace_event_raw_sys_enter *ctx) {
   if (parent) bpf_core_read(&ppid, sizeof(ppid), &parent->tgid);
   if (bpf_probe_read_user_str(path_buf, 256, filename) > 0)
     ;
-  #pragma unroll
-  for (int i = 0; i < 6; i++) {
-    const char *argp = 0;
-    if (bpf_core_read(&argp, sizeof(argp), &argv[i]) < 0)
-      break;
-    if (!argp)
-      break;
-    int rem = (int)512 - off - 1;
-    if (rem <= 0)
-      break;
-    int w = bpf_probe_read_user_str(&argv_buf[off], rem, argp);
-    if (w <= 0)
-      break;
-    off += w - 1;
-    if (off < 511) {
-      argv_buf[off++] = ' ';
-    }
-  }
+  const char *arg0p = 0;
+  if (bpf_core_read(&arg0p, sizeof(arg0p), &argv[0]) == 0 && arg0p)
+    bpf_probe_read_user_str(argv_buf, 512, arg0p);
   struct event *event = gadget_reserve_buf(&events, sizeof(struct event));
   if (!event)
     return 0;
@@ -316,8 +285,7 @@ int tp_sys_enter_execveat(struct trace_event_raw_sys_enter *ctx) {
   event->fd = -1;
   event->retval = 0;
   __builtin_memcpy(event->path, path_buf, sizeof(event->path));
-  if (off > 0)
-    __builtin_memcpy(event->argv, argv_buf, sizeof(event->argv));
+  __builtin_memcpy(event->argv, argv_buf, sizeof(event->argv));
   gadget_submit_buf((void *)ctx, &events, event, sizeof(*event));
   return 0;
 }
