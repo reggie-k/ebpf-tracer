@@ -15,8 +15,12 @@
 // Inspektor Gadget macros
 #include <gadget/macros.h>
 
+#define NAME_MAX 255
+
 struct event {
 	__u32 pid;
+  char comm[TASK_COMM_LEN];
+	char filename[NAME_MAX];
 };
 
 // events is the name of the buffer map and 1024 * 256 is its size.
@@ -35,6 +39,8 @@ int enter_openat(struct syscall_trace_enter *ctx)
 		return 0;
 
 	event->pid = bpf_get_current_pid_tgid() >> 32;
+  bpf_get_current_comm(event->comm, sizeof(event->comm));
+	bpf_probe_read_user_str(event->filename, sizeof(event->filename), (const char *)ctx->args[1]);
 
 	gadget_submit_buf(ctx, &events, event, sizeof(*event));
 
