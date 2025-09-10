@@ -91,22 +91,7 @@ static __always_inline void emit_event(void *ctx, const char *op, int fd, long r
   gadget_submit_buf(ctx, &events, e, sizeof(*e));
 }
 
-static const char needle_lock[] = "lock";
-
-/* Return 1 if path contains "lock" anywhere, else 0 */
-static __always_inline int path_contains_lock(const char *p) {
-  for (int i = 0; i <= 256 - 4; i++) {
-    int matched = 1;
-    for (int j = 0; j < 4; j++) {
-      char c = p[i + j];
-      if (c == '\0') { matched = 0; break; }
-      if (c != needle_lock[j]) { matched = 0; break; }
-    }
-    if (matched) return 1;
-    if (p[i] == '\0') break;
-  }
-  return 0;
-}
+/* no in-kernel path filter; emit all events */
 
 /* openat(openat2) enter: capture filename */
 SEC("tracepoint/syscalls/sys_enter_openat")
@@ -150,10 +135,8 @@ int tp_sys_exit_openat(struct trace_event_raw_sys_exit *ctx) {
   __s64 ret = ctx->ret;
   __u8 *pathp = bpf_map_lookup_elem(&inprog_open, &id);
   if (pathp) {
-    if (path_contains_lock((const char *)pathp)) {
-      emit_event((void *)ctx, "open", (__s32)ret, ret, (const char *)pathp);
-    }
-    if (ret >= 0 && path_contains_lock((const char *)pathp)) {
+    emit_event((void *)ctx, "open", (__s32)ret, ret, (const char *)pathp);
+    if (ret >= 0) {
       struct fd_key key = { .tgid = id >> 32, .fd = (__s32)ret };
       bpf_map_update_elem(&fd_path, &key, pathp, BPF_ANY);
     }
@@ -170,10 +153,8 @@ int tp_sys_exit_openat2(struct trace_event_raw_sys_exit *ctx) {
   __s64 ret = ctx->ret;
   __u8 *pathp = bpf_map_lookup_elem(&inprog_open, &id);
   if (pathp) {
-    if (path_contains_lock((const char *)pathp)) {
-      emit_event((void *)ctx, "open", (__s32)ret, ret, (const char *)pathp);
-    }
-    if (ret >= 0 && path_contains_lock((const char *)pathp)) {
+    emit_event((void *)ctx, "open", (__s32)ret, ret, (const char *)pathp);
+    if (ret >= 0) {
       struct fd_key key = { .tgid = id >> 32, .fd = (__s32)ret };
       bpf_map_update_elem(&fd_path, &key, pathp, BPF_ANY);
     }
@@ -203,7 +184,7 @@ int tp_sys_exit_close(struct trace_event_raw_sys_exit *ctx) {
     return 0;
   struct fd_key key = { .tgid = id >> 32, .fd = *fdp };
   __u8 *pathp = bpf_map_lookup_elem(&fd_path, &key);
-  if (pathp && path_contains_lock((const char *)pathp)) {
+  if (pathp) {
     emit_event((void *)ctx, "close", *fdp, ctx->ret, (const char *)pathp);
   }
   if (pathp)
