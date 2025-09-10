@@ -91,9 +91,29 @@ static __always_inline void emit_event(void *ctx, const char *op, int fd, long r
   gadget_submit_buf(ctx, &events, e, sizeof(*e));
 }
 
+/* Return 1 if path contains suffix ".git/HEAD.lock" (substring anywhere), else 0 */
+static __always_inline int path_has_git_head_lock(const char *p) {
+  const char needle[14] = {'.','g','i','t','/','H','E','A','D','.','l','o','c','k'};
+  /* Scan forward; bounded and unrolled to satisfy verifier */
+#pragma unroll
+  for (int i = 0; i <= 256 - 14; i++) {
+    int matched = 1;
+#pragma unroll
+    for (int j = 0; j < 14; j++) {
+      char c = p[i + j];
+      if (c == '\0' && j == 0) { matched = 0; break; }
+      if (c != needle[j]) { matched = 0; break; }
+    }
+    if (matched) return 1;
+  }
+  return 0;
+}
+
 /* openat(openat2) enter: capture filename */
 SEC("tracepoint/syscalls/sys_enter_openat")
 int tp_sys_enter_openat(struct trace_event_raw_sys_enter *ctx) {
+  if (gadget_should_discard_data_current())
+    return 0;
   __u64 id = bpf_get_current_pid_tgid();
   const char *filename = (const char *)ctx->args[1];
   __u32 zero = 0;
@@ -108,6 +128,8 @@ int tp_sys_enter_openat(struct trace_event_raw_sys_enter *ctx) {
 
 SEC("tracepoint/syscalls/sys_enter_openat2")
 int tp_sys_enter_openat2(struct trace_event_raw_sys_enter *ctx) {
+  if (gadget_should_discard_data_current())
+    return 0;
   __u64 id = bpf_get_current_pid_tgid();
   const char *filename = (const char *)ctx->args[1];
   __u32 zero = 0;
@@ -123,12 +145,16 @@ int tp_sys_enter_openat2(struct trace_event_raw_sys_enter *ctx) {
 /* openat(openat2) exit: emit event and remember fd->path */
 SEC("tracepoint/syscalls/sys_exit_openat")
 int tp_sys_exit_openat(struct trace_event_raw_sys_exit *ctx) {
+  if (gadget_should_discard_data_current())
+    return 0;
   __u64 id = bpf_get_current_pid_tgid();
   __s64 ret = ctx->ret;
   __u8 *pathp = bpf_map_lookup_elem(&inprog_open, &id);
   if (pathp) {
-    emit_event((void *)ctx, "open", (__s32)ret, ret, (const char *)pathp);
-    if (ret >= 0) {
+    if (path_has_git_head_lock((const char *)pathp)) {
+      emit_event((void *)ctx, "open", (__s32)ret, ret, (const char *)pathp);
+    }
+    if (ret >= 0 && path_has_git_head_lock((const char *)pathp)) {
       struct fd_key key = { .tgid = id >> 32, .fd = (__s32)ret };
       bpf_map_update_elem(&fd_path, &key, pathp, BPF_ANY);
     }
@@ -139,12 +165,16 @@ int tp_sys_exit_openat(struct trace_event_raw_sys_exit *ctx) {
 
 SEC("tracepoint/syscalls/sys_exit_openat2")
 int tp_sys_exit_openat2(struct trace_event_raw_sys_exit *ctx) {
+  if (gadget_should_discard_data_current())
+    return 0;
   __u64 id = bpf_get_current_pid_tgid();
   __s64 ret = ctx->ret;
   __u8 *pathp = bpf_map_lookup_elem(&inprog_open, &id);
   if (pathp) {
-    emit_event((void *)ctx, "open", (__s32)ret, ret, (const char *)pathp);
-    if (ret >= 0) {
+    if (path_has_git_head_lock((const char *)pathp)) {
+      emit_event((void *)ctx, "open", (__s32)ret, ret, (const char *)pathp);
+    }
+    if (ret >= 0 && path_has_git_head_lock((const char *)pathp)) {
       struct fd_key key = { .tgid = id >> 32, .fd = (__s32)ret };
       bpf_map_update_elem(&fd_path, &key, pathp, BPF_ANY);
     }
@@ -156,6 +186,8 @@ int tp_sys_exit_openat2(struct trace_event_raw_sys_exit *ctx) {
 /* close enter/exit: correlate fd with path and emit */
 SEC("tracepoint/syscalls/sys_enter_close")
 int tp_sys_enter_close(struct trace_event_raw_sys_enter *ctx) {
+  if (gadget_should_discard_data_current())
+    return 0;
   __u64 id = bpf_get_current_pid_tgid();
   __s32 fd = (__s32)ctx->args[0];
   bpf_map_update_elem(&inprog_close, &id, &fd, BPF_ANY);
@@ -164,13 +196,17 @@ int tp_sys_enter_close(struct trace_event_raw_sys_enter *ctx) {
 
 SEC("tracepoint/syscalls/sys_exit_close")
 int tp_sys_exit_close(struct trace_event_raw_sys_exit *ctx) {
+  if (gadget_should_discard_data_current())
+    return 0;
   __u64 id = bpf_get_current_pid_tgid();
   __s32 *fdp = bpf_map_lookup_elem(&inprog_close, &id);
   if (!fdp)
     return 0;
   struct fd_key key = { .tgid = id >> 32, .fd = *fdp };
   __u8 *pathp = bpf_map_lookup_elem(&fd_path, &key);
-  emit_event((void *)ctx, "close", *fdp, ctx->ret, (const char *)pathp);
+  if (pathp && path_has_git_head_lock((const char *)pathp)) {
+    emit_event((void *)ctx, "close", *fdp, ctx->ret, (const char *)pathp);
+  }
   if (pathp)
     bpf_map_delete_elem(&fd_path, &key);
   bpf_map_delete_elem(&inprog_close, &id);
