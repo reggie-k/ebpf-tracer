@@ -7,6 +7,7 @@ datasources:
         annotations:
           description: Name of the process opening a file
           template: comm
+          columns.width: 64
       filename:
         annotations:
            description: Path of the file being opened
