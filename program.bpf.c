@@ -219,6 +219,8 @@ int tp_sys_exit_close(struct trace_event_raw_sys_exit *ctx) {
 /* process exit */
 SEC("tracepoint/sched/sched_process_exit")
 int tp_sched_process_exit(struct trace_event_raw_sched_process_template *ctx) {
+  if (gadget_should_discard_data_current())
+    return 0;
   /* capture real exit_code from current task */
   struct task_struct *task = (struct task_struct *)bpf_get_current_task();
   int code = 0;
@@ -230,6 +232,8 @@ int tp_sched_process_exit(struct trace_event_raw_sched_process_template *ctx) {
 /* process start via execve/execveat (emit filename) */
 SEC("tracepoint/syscalls/sys_enter_execve")
 int tp_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
+  if (gadget_should_discard_data_current())
+    return 0;
   const char *filename = (const char *)ctx->args[0];
   const char *const *argv = (const char *const *)ctx->args[1];
   __u32 zero = 0;
@@ -262,6 +266,8 @@ int tp_sys_enter_execve(struct trace_event_raw_sys_enter *ctx) {
 
 SEC("tracepoint/syscalls/sys_enter_execveat")
 int tp_sys_enter_execveat(struct trace_event_raw_sys_enter *ctx) {
+  if (gadget_should_discard_data_current())
+    return 0;
   const char *filename = (const char *)ctx->args[1];
   const char *const *argv = (const char *const *)ctx->args[2];
   __u32 zero = 0;
