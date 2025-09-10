@@ -1,33 +1,17 @@
 name: 'file-io-tracer'
 description: 'Trace open/close/exit and correlate fd to path to debug leftover lock files'
-tracers:
-  file_io_tracer:
-    mapName: events
-    structName: event
-structs:
-  event:
+datasources:
+  open:
     fields:
-    # 'proc' fields (pid/comm/parent/mntns/creds) are auto-detected via struct gadget_process
-    - name: op
-      description: Operation (open|close|exit|exec)
-      attributes:
-        template: string
-        length: 8
-    - name: fd
-      description: File descriptor
-      attributes:
-        template: int
-    - name: retval
-      description: Return value
-      attributes:
-        template: int
-    - name: path
-      description: File path
-      attributes:
-        template: string
-        length: 256
-    - name: argv
-      description: Exec arguments (best-effort, limited)
-      attributes:
-        template: string
-        length: 512
+      comm:
+        annotations:
+          description: Name of the process opening a file
+          template: comm
+      filename:
+        annotations:
+           description: Path of the file being opened
+           columns.width: 64
+      pid:
+        annotations:
+          description: PID of the process opening a file
+          template: pid
