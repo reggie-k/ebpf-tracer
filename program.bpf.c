@@ -91,11 +91,11 @@ static __always_inline void emit_event(void *ctx, const char *op, int fd, long r
   gadget_submit_buf(ctx, &events, e, sizeof(*e));
 }
 
-static const char needle_git_head_lock[] = ".git/HEAD.lock";
-#define NEEDLE_LEN 14
+static const char needle_lock[] = ".lock";
+#define NEEDLE_LEN 5
 
-/* Return 1 if path ends with ".git/HEAD.lock", else 0 */
-static __always_inline int path_ends_with_git_head_lock(const char *p) {
+/* Return 1 if path ends with ".lock", else 0 */
+static __always_inline int path_ends_with_lock(const char *p) {
   int len = 0;
   /* find length up to 256 */
   for (int i = 0; i < 256; i++) {
@@ -106,7 +106,7 @@ static __always_inline int path_ends_with_git_head_lock(const char *p) {
     return 0;
   int start = len - NEEDLE_LEN;
   for (int j = 0; j < NEEDLE_LEN; j++) {
-    if (p[start + j] != needle_git_head_lock[j])
+    if (p[start + j] != needle_lock[j])
       return 0;
   }
   return 1;
@@ -154,10 +154,10 @@ int tp_sys_exit_openat(struct trace_event_raw_sys_exit *ctx) {
   __s64 ret = ctx->ret;
   __u8 *pathp = bpf_map_lookup_elem(&inprog_open, &id);
   if (pathp) {
-    if (path_ends_with_git_head_lock((const char *)pathp)) {
+    if (path_ends_with_lock((const char *)pathp)) {
       emit_event((void *)ctx, "open", (__s32)ret, ret, (const char *)pathp);
     }
-    if (ret >= 0 && path_ends_with_git_head_lock((const char *)pathp)) {
+    if (ret >= 0 && path_ends_with_lock((const char *)pathp)) {
       struct fd_key key = { .tgid = id >> 32, .fd = (__s32)ret };
       bpf_map_update_elem(&fd_path, &key, pathp, BPF_ANY);
     }
@@ -174,10 +174,10 @@ int tp_sys_exit_openat2(struct trace_event_raw_sys_exit *ctx) {
   __s64 ret = ctx->ret;
   __u8 *pathp = bpf_map_lookup_elem(&inprog_open, &id);
   if (pathp) {
-    if (path_ends_with_git_head_lock((const char *)pathp)) {
+    if (path_ends_with_lock((const char *)pathp)) {
       emit_event((void *)ctx, "open", (__s32)ret, ret, (const char *)pathp);
     }
-    if (ret >= 0 && path_ends_with_git_head_lock((const char *)pathp)) {
+    if (ret >= 0 && path_ends_with_lock((const char *)pathp)) {
       struct fd_key key = { .tgid = id >> 32, .fd = (__s32)ret };
       bpf_map_update_elem(&fd_path, &key, pathp, BPF_ANY);
     }
@@ -207,7 +207,7 @@ int tp_sys_exit_close(struct trace_event_raw_sys_exit *ctx) {
     return 0;
   struct fd_key key = { .tgid = id >> 32, .fd = *fdp };
   __u8 *pathp = bpf_map_lookup_elem(&fd_path, &key);
-  if (pathp && path_ends_with_git_head_lock((const char *)pathp)) {
+  if (pathp && path_ends_with_lock((const char *)pathp)) {
     emit_event((void *)ctx, "close", *fdp, ctx->ret, (const char *)pathp);
   }
   if (pathp)
