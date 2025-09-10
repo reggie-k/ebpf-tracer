@@ -17,6 +17,9 @@
 
 #include <gadget/mntns.h>
 
+// Inspektor Gadget filtering helpers
+#include <gadget/filter.h>
+
 #define NAME_MAX 255
 
 struct event {
@@ -35,6 +38,9 @@ GADGET_TRACER(open, events, event);
 SEC("tracepoint/syscalls/sys_enter_openat")
 int enter_openat(struct syscall_trace_enter *ctx)
 {
+  if (gadget_should_discard_data_current())
+    return 0;
+
 	struct event *event;
 
 	event = gadget_reserve_buf(&events, sizeof(*event));
