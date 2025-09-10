@@ -15,9 +15,12 @@
 // Inspektor Gadget macros
 #include <gadget/macros.h>
 
+#include <gadget/mntns.h>
+
 #define NAME_MAX 255
 
 struct event {
+  gadget_mntns_id mntns_id; 
 	__u32 pid;
   char comm[TASK_COMM_LEN];
 	char filename[NAME_MAX];
@@ -39,6 +42,7 @@ int enter_openat(struct syscall_trace_enter *ctx)
 		return 0;
 
 	event->pid = bpf_get_current_pid_tgid() >> 32;
+  event->mntns_id = gadget_get_current_mntns_id();
   bpf_get_current_comm(event->comm, sizeof(event->comm));
 	bpf_probe_read_user_str(event->filename, sizeof(event->filename), (const char *)ctx->args[1]);
 
